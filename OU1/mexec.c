@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -5,23 +6,30 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <ctype.h>
-// #include <sys/wait.h>
+//#include <sys/wait.h>
 // #include <unistd.h>
 #include <fcntl.h>
 
 #define MAXLENGHT 1024
 
+
 int check_prog_params(int argc, const char *argv[], FILE **fp);
 char **readline(int *lineCount, FILE *fp);
 void kill_lines(char **lines, const int lineCount);
-void runCommands(char **lines, const int lineCount, const int i);
+void runCommands(char **lines, const int lineCount, const int i, pid_t ppid);
 void split_line(char *line, char **args);
 void changeFileDescriptors(int, int);
 int makeFork(void);
 void createPipe(int newPipe[2]);
+void handler(int sig);
+
 
 int main(int argc, const char *argv[])
 {
+
+	struct sigaction sa;
+	sa.sa_handler = handler;
+	sigaction(SIGINT, &sa, NULL);
 
 	FILE *fp;
 	int lineCount = 0;
@@ -48,6 +56,8 @@ int main(int argc, const char *argv[])
 
 	int pipe1[2];
 	int pipe2[2];
+	int child_failed_pipe[2];
+	createPipe(child_failed_pipe);
 
 	int i;
 	pid_t pid = 0;
@@ -98,17 +108,31 @@ int main(int argc, const char *argv[])
 
 	if (getpid() != ppid)
 	{
-		runCommands(lines, lineCount, i);
+		runCommands(lines, lineCount, i, ppid);
 	}
 	
 	int status;
 	wait(&status);
-	if (!WIFSTOPPED(status)){
-		kill_lines(lines, lineCount);
+
+
+
+	
+
+	if (WIFSTOPPED(status)){
+		fprintf(stderr, "EXIT FAIL\n");
 		exit(EXIT_FAILURE);
-	}
-	kill_lines(lines, lineCount);
-	return 0;
+	}else{
+		fprintf(stderr, "return 0\n");
+		kill_lines(lines, lineCount);
+		return 0;
+	}	
+	/*Make a pipe connected to all processes. 
+	So if one failes they send -1 and parent process should do "EXIT_FAILIURE".*/
+}
+
+void handler(int sig){
+	write(STDOUT_FILENO, "EXIT FAIL\n", 10);
+	exit(EXIT_FAILURE);
 }
 
 int check_prog_params(int argc, const char *argv[], FILE **fp)
@@ -241,12 +265,15 @@ int makeFork(void)
 	After that the second child runs the command after that.
 	until the "parent process of them all" eventually runs the last inputed command at the end.
 */
-void runCommands(char **lines, const int lineCount, const int i)
+void runCommands(char **lines, const int lineCount, const int i, pid_t ppid)
 {
 	char *args[1024];
 	split_line(lines[lineCount - i], args);
 	if(execvp(args[0], args) == -1){
 		perror(args[0]);
+		fprintf(stdout, "%d", EOF);
+		kill_lines(lines, lineCount);
+		kill(ppid, SIGINT);
 		exit(EXIT_FAILURE);
 	}
 }

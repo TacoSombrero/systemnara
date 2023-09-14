@@ -1,14 +1,29 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <sys/wait.h>
 #include <unistd.h>
+#include <stdlib.h>
+#define MSGSIZE 16
+char* msg1 = "hello, world #1";
 
-int main(void){
-	int args[2];
-	char* msg = "Hello world#1\n";
-	pipe(args);
-	write(args[1], msg, 15);
-	char answer[15];
-	read(args[0], answer, 15);
-	printf("%s", answer);
+  
+int main()
+{
+    char inbuf[MSGSIZE];
+    int p[2], i;
+  
+    if (pipe(p) < 0){
+	fprintf(stderr, "EXIT\n");
+        exit(1);
+    }
+
+  
+    /* continued */
+    /* write pipe */
+  
+    write(p[1], msg1, MSGSIZE);
+  
+  /* read pipe */
+        read(p[0], inbuf, MSGSIZE);
+        printf("% s\n", inbuf);
+    
+    return 0;
 }
