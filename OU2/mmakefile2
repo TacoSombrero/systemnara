@@ -1,0 +1,5 @@
+fact: fact.o
+	gcc -g -std=gnu11 fact.o -o fact
+
+fact.o: fact.c
+	gcc -g -std=gnu11 -c fact.c

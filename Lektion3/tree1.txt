@@ -1,0 +1,8 @@
+C->H
+K->L
+H->O
+F->U
+L->A
+O->K
+A->D
+U->N

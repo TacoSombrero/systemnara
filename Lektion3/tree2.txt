@@ -1,0 +1,8 @@
+R->S
+M->P
+C->O
+O->M
+O->T
+P->U
+T->E
+T->R
