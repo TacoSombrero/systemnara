@@ -11,9 +11,10 @@
 
 FILE *open_file(const char *file);
 pid_t make_fork(void);
-void compile_program(bool suppress, char **cmd);
+void compile(bool suppress, char **cmd);
 int build_target(makefile *make, const char *target, bool force_compile, bool suppress);
 bool is_modified_more_recently(const char *prereq, const char* target);
+void suppress_output(bool suppress, char **cmd);
 
 int main(int argc, char *argv[]){
 	int opt;
@@ -62,6 +63,11 @@ int main(int argc, char *argv[]){
 		build_default_target = false;
 		
 		//Build argv[optind] targets
+		rule *r = makefile_rule(make, argv[optind]);
+		if(r == NULL){
+			fprintf(stderr, "%s: Target does not exist!\n", argv[optind]);
+			exit(EXIT_FAILURE);
+		}
 		build_target(make, argv[optind], force_compile, suppress);	
 	}
 
@@ -70,6 +76,8 @@ int main(int argc, char *argv[]){
 		build_target(make, makefile_default_target(make), force_compile, suppress);
 		
 	}
+
+	makefile_del(make);
 
 	return 0;
 }
@@ -83,15 +91,15 @@ int build_target(makefile *make, const char *target, bool force_compile, bool su
 		return 0;
 	}
 	const char **prereq = rule_prereq(rule);
+
 	//Compile prereq. If prereq is newer than the target.
 	for(int i = 0; prereq[i] != NULL; i++){
 		build_target(make, prereq[i], force_compile, suppress);
-		int status;
-		wait(&status);
+		
 		if(force_compile || is_modified_more_recently(prereq[i], target)){
 			//Compile the prereq.
 			char **prereq_cmd = rule_cmd(makefile_rule(make, target));
-			compile_program(suppress, prereq_cmd);
+			compile(suppress, prereq_cmd);
 			continue;
 		}
 	}
@@ -107,14 +115,16 @@ int build_target(makefile *make, const char *target, bool force_compile, bool su
 bool is_modified_more_recently(const char *prereq, const char* target){
 
 	FILE *fp = fopen(prereq, "r");
-	FILE *fp2 = fopen(target, "r");
 	if(fp == NULL ){
-		return false;
-	}	
+		perror(prereq);
+		exit(EXIT_FAILURE);
+	}
+	fclose(fp);
+
+	FILE *fp2 = fopen(target, "r");
 	if(fp2 == NULL){
 		return true;
 	}
-	fclose(fp);
 	fclose(fp2);
 
 	struct stat prereq_info;
@@ -157,20 +167,28 @@ pid_t make_fork(void){
 	return pid;
 }
 
-void compile_program(bool suppress, char **cmd){
+void compile(bool suppress, char **cmd){
 	pid_t pid = make_fork();
 	if(pid == 0){
-		if(!suppress){
-			for(int i = 0; cmd[i] != NULL; i++){
-				fprintf(stdout, "%s ", cmd[i]);
+		suppress_output(suppress, cmd);
+		execvp(cmd[0], cmd);
+	}
+	int status;
+	wait(&status);
+
+	if (WEXITSTATUS(status) == 1){
+		exit(EXIT_FAILURE);
+	}
+}
+
+void suppress_output(bool suppress, char **cmd){
+	if(!suppress){
+		for(int i = 0; cmd[i] != NULL; i++){
+			printf("%s ", cmd[i]);
+			if(cmd[i+1] == NULL){
+				printf("\n");
 			}
-			fprintf(stdout, "\n");
-			//This might lead to error. I have no idea. Just remember that it might cause problems when running.
-			//close(STDOUT_FILENO);
 		}
-		if(execvp(cmd[0], cmd) == -1){
-			perror(cmd[0]);
-			exit(EXIT_FAILURE);
-		}
+		fflush(stdout);
 	}
 }
