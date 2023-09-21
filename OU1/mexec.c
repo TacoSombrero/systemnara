@@ -20,6 +20,8 @@ int check_prog_params(int argc, const char *argv[], FILE **fp);
 void handler(int signo);
 void create_forks_and_pipes(int pipe1[2], int pipe2[2], pid_t ppid, int *i);
 void redirect_file_descriptors(int *input_pipe, int *output_pipe, int pipe1[2], int pipe2[2], pid_t ppid, int *i);
+char *malloc_memory(size_t size);
+char **reallocate_memory(char **ptr, size_t size);
 
 char **readline(FILE *fp);
 void kill_lines(void);
@@ -190,19 +192,21 @@ int check_prog_params(int argc, const char *argv[], FILE **fp)
 char **readline(FILE *fp)
 {
 	int buffsize = MAXLENGHT;
-	char **lines = (char **)malloc(MAXLENGHT * sizeof(char *));
+	char **lines = (char **)malloc_memory(MAXLENGHT * sizeof(char*));
+	/*char **lines = (char **)malloc(MAXLENGHT * sizeof(char *));
 	if (lines == NULL){
 		perror("Memory allocation failed!");
 		exit(EXIT_FAILURE);
-	}
+	}*/
 	lineCount = 0;
 	while (1){
 
-		char *line = (char *)malloc(buffsize * sizeof(char));
+		char *line = (char *)malloc_memory(MAXLENGHT * sizeof(char*));
+		/*char *line = (char *)malloc(buffsize * sizeof(char));
 		if (line == NULL){
 			perror("Memory allocation failed!");
 			exit(EXIT_FAILURE);
-		}
+		}*/
 
 		if (fp == NULL){
 			if (fgets(line, MAXLENGHT, stdin) == NULL){
@@ -227,25 +231,45 @@ char **readline(FILE *fp)
 
 		if (lineCount >= buffsize){
 			buffsize *= 2;
-			lines = realloc(lines, buffsize * sizeof(char *));
+			lines = reallocate_memory(lines, buffsize * sizeof(char *));
+			/*lines = realloc(lines, buffsize * sizeof(char *));
 			if (lines == NULL){
 				perror("Memory allocation failed!");
 				exit(EXIT_FAILURE);
-			}
+			}*/
 		}
 	}
 
 	if (lineCount != 0){
 		// Reallocate memory to actual number of lines read.
-		lines = realloc(lines, lineCount * sizeof(char *));
+		lines = reallocate_memory(lines, lineCount * sizeof(char *));
+		/*lines = realloc(lines, lineCount * sizeof(char *));
 		if (lines == NULL){
 			perror("Memory allocation failed!");
 			exit(EXIT_FAILURE);
-		}
+		}*/
 	}
 
 	return lines;
 }
+
+char *malloc_memory(size_t size){
+	char *arr = (char *)malloc(size);
+	if (arr == NULL){
+		perror("Memory allocation failed!");
+		exit(EXIT_FAILURE);
+	}
+	return arr;
+}
+
+char **reallocate_memory(char **ptr, size_t size){
+	char **arr = realloc(ptr, size);
+	if (arr == NULL){
+		perror("Memory allocation failed!");
+		exit(EXIT_FAILURE);
+	}
+	return arr;
+}/**/
 
 /**
  * change_file_descriptors() - Reads the input either from STDIN or a file.
