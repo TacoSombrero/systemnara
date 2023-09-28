@@ -7,5 +7,5 @@ mmake: mmake.o parser.o
 mmake.o: mmake.c
 	$(CC) $(CFLAGS) -c mmake.c
 
-parser.o: parser.c
-	$(CC) $(CFLAGS) -c parser.c
+parser.o: parser.c parser.h
+	$(CC) $(CFLAGS) -c parser.c parser.h
