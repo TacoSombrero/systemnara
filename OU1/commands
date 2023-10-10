@@ -1,1 +1,1 @@
-valgrind --leak-check=full --show-leak-kinds=all --trace-children=no --track-origins=yes ./mexec
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./mexec

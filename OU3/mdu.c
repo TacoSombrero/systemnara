@@ -5,19 +5,54 @@
 #include <getopt.h>
 #include <dirent.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <pthread.h>
 
-char *get_options(int argc, char *argv[], int *thread_number);
-void find_files(char *dir_name, char *current_path);
-DIR *open_dir(char *s);
 
+typedef struct toThread{
+	int size;
+	char **paths;
+	int number_of_threads;
+	DIR **ds; 
+	int j;
+}toThread;
+
+int get_options(int argc, char *argv[]);
+int find_files(void *items);
+void open_dir(char *s, toThread *toThread);
+int get_size_of_file(char *name_of_file);
+char *get_new_path(char *current_dir, char *name, bool is_directory);
+char *check_string(char *s);
 
 int main(int argc, char *argv[]){
-
-	int thread_number = 1;
-	char *dir = get_options(argc, argv, &thread_number);
 	
-	find_files(dir, dir);
+	int number_of_threads = 0;
+	number_of_threads = get_options(argc, argv);
+	struct toThread *toThread = malloc(sizeof(struct toThread));
+	//int **sizes = malloc(sizeof(int*));
+	char **paths = malloc(sizeof(char *));
+	toThread->ds = malloc(sizeof(DIR**));
+	toThread->j = 0;
+	toThread->paths = paths;
+	toThread->size = 0;
+	toThread->number_of_threads = number_of_threads;
+	
+	bool use_cwd = true;
+	for (; optind < argc; optind++)
+	{
+		use_cwd = false;
+		open_dir(argv[optind], toThread);
+		printf("%d\t%s\n", toThread->size, argv[optind]);
+	}
 
+	if(use_cwd){
+		open_dir("./", toThread);
+		printf("%d\t%s\n", toThread->size, "./");
+	}
+
+	for(int i = 0; i < toThread->j; i++){
+		closedir(toThread->ds[i]);
+	}
 
 	return 0;
 }
@@ -30,44 +65,22 @@ int main(int argc, char *argv[]){
  * @argv: The commandline arguments.
  * @return: A string for the name of the makefile that shall be used.
 */
-char *get_options(int argc, char *argv[], int *thread_number){
+int get_options(int argc, char *argv[]){
 	int opt;
-	char *file = "./\0";
+	int number_of_threads = 1;
 	
-	while ((opt = getopt(argc, argv, "j:f:")) != -1){
+	while ((opt = getopt(argc, argv, "j:")) != -1){
 		switch (opt)
 		{
-		case 'f':
-			file = optarg;
-			break;
 		case 'j':
-			*thread_number = atoi(optarg);
+			number_of_threads = atoi(optarg);
 			break;
 		case ':':
 			printf("option needs a value\n");
 			break;
 		}
 	}
-	return file;
-}
-
-void find_files(char *dir_name, char *current_path){
-	struct dirent *pDirent;
-	DIR *dir = open_dir(dir_name);
-	
-
-
-	while ((pDirent = readdir(dir)) != NULL)
-	{
-		if(pDirent->d_type == 4){ // If it is a directory...
-			strcat(current_path, dir_name);
-			find_files(pDirent->d_name, current_path);
-		}
-		//get_size_of_file(pDirent->d_name);
-		printf("[%s]\n", pDirent->d_name);
-	}
-	
-
+	return number_of_threads;
 }
 
 /**
@@ -75,16 +88,122 @@ void find_files(char *dir_name, char *current_path){
  * @s: Directory to open.
  * @return: A DIR pointer.
 */
-DIR *open_dir(char *s){
-	DIR *dir = opendir(s);
-	if(dir == NULL){
-		fprintf(stderr, "Failed to open directory: %s\n", s);
-		exit(EXIT_FAILURE);
+void open_dir(char *str, toThread *toThread){
+	DIR *dir = malloc(sizeof(DIR*));
+	dir = opendir(str);
+	toThread->ds[toThread->j] = dir;
+	if(dir != NULL){
+
+		int len = strlen(str);
+		if(str[len - 1] != '/'){
+			strcat(str, "/");
+		}
+
+		int i = 0;
+		struct dirent *pDirent;
+		
+		for(i = 0; (pDirent = readdir(dir)) != NULL; i++){
+			if((strncmp(pDirent->d_name, ".", 2) == 0) || (strncmp(pDirent->d_name, "..", 3) == 0)){
+				continue;
+			}
+			if(pDirent->d_type == 4){
+				
+				char *new_dir_path = get_new_path(str, pDirent->d_name, true);
+				toThread->size += get_size_of_file(new_dir_path);
+				//fprintf(stderr,"%s is dir\n", pDirent->d_name);
+				open_dir(new_dir_path, toThread);
+			}else{
+				char *new_file_path = get_new_path(str, pDirent->d_name, false);
+				toThread->size += get_size_of_file(new_file_path);
+				//fprintf(stderr, "%s is file\n", pDirent->d_name);
+			}
+		}
+	}else{
+		//fprintf(stderr, "DIR == NULL\n");
+		toThread->size = get_size_of_file(str);
 	}
-	return dir;
+	// s is a file
+	// Get size of the file.
 }
 
-/*int get_size_of_file(char *path){
+char *check_string(char *s){
+	int len = strlen(s);
+	char *str = malloc(sizeof(len+1));
+	int i = 0;
+	if (s[len - 1] == '\n'){
+		s[len - 1] = '\0';
+	}
+	for(i = 0;s[i] != '\0'; i++){
+		str[i] = s[i];
+	}
 
+	if(s[len-1] != '/'){
+
+		int i = 0;
+		for(i = 0; i < len-1; i++){
+			str[i] = s[i];
+		}
+		str[i] = '/';
+		str[i+1] = '\0';
+
+		return str;
+	}
+	return s;
 }
+
+/**
+ * get_size_of_file() - Uses lstat to get the size of a file.
+ * @path: The path to the file.
+ * @return: The size of the file.
 */
+int get_size_of_file(char *name_of_file){
+/*
+	FILE *fp = fopen(name_of_file, "r");
+	if(fp == NULL){
+		DIR *dir = opendir(name_of_file);
+		if(dir == NULL){
+			fprintf(stderr, "Could not open file: %s\n", name_of_file);
+			return 0;
+		}
+		closedir(dir);
+	}
+	fclose(fp);*/
+
+	struct stat info;
+	if(lstat(name_of_file, &info)){
+		perror(name_of_file);
+		//exit(EXIT_FAILURE);
+		return 0;
+	}
+
+	int size = info.st_blocks;
+
+	return size;
+}
+
+char *get_new_path(char *current_dir, char *name, bool is_directory){
+
+	
+	int x = strlen(name);
+	int y = strlen(current_dir);
+
+	char *new_dir = malloc(x+y+2);
+	int i = 0;
+	while(current_dir[i] != '\0'){
+		new_dir[i] = current_dir[i];
+		i++;
+	}
+	int j = 0;
+	while (name[j] != '\0'){
+		new_dir[i] = name[j];
+		i++;
+		j++;
+	}
+
+	if(is_directory){
+		new_dir[i] = '/';
+	}
+
+	return new_dir;
+	
+}

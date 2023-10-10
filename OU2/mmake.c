@@ -149,18 +149,29 @@ int build_target(makefile *make, const char *target, bool force_compile, bool su
 	}
 	const char **prereq = rule_prereq(rule);
 
+
+	bool compile_target = false;
 	// Compile prereq. If prereq is newer than the target.
+
 	for (int i = 0; prereq[i] != NULL; i++)
 	{
 		build_target(make, prereq[i], force_compile, suppress);
 
-		if (force_compile || is_modified_more_recently(prereq[i], target))
-		{
-			// Compile the prereq.
+		if(force_compile){
 			char **prereq_cmd = rule_cmd(makefile_rule(make, target));
 			compile(suppress, prereq_cmd);
 			continue;
 		}
+		if(is_modified_more_recently(prereq[i], target))
+		{
+			compile_target = true;
+		}
+	}
+
+	if(compile_target){
+		// Compile the prereq.
+		char **prereq_cmd = rule_cmd(makefile_rule(make, target));
+		compile(suppress, prereq_cmd);
 	}
 	return 0;
 }
@@ -254,7 +265,6 @@ void compile(bool suppress, char **cmd)
 	}
 	int status;
 	wait(&status);
-
 	if (WEXITSTATUS(status) == 1)
 	{
 		exit(EXIT_FAILURE);
@@ -280,6 +290,9 @@ void print_commands(bool suppress, char **cmd)
 				printf(" ");
 			}
 		}
-		fflush(stdout);
+		if(fflush(stdout) == EOF){
+			fprintf(stderr, "fflush: Failed to flush stdout");
+			exit(EXIT_FAILURE);
+		}
 	}
 }
