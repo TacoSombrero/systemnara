@@ -1,5 +1,11 @@
 {
 	"files.associations": {
-		"unistd.h": "c"
+		"unistd.h": "c",
+		"stdbool.h": "c",
+		"array": "c",
+		"string_view": "c",
+		"format": "c",
+		"initializer_list": "c",
+		"span": "c"
 	}
 }
