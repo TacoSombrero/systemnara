@@ -66,7 +66,6 @@ stack *stack_pop(stack *s){
 	}else{
 		struct cell *c = s->top;
 		s->top = s->top->next;
-		//free(c->str);
 		free(c);
 	}
 	return s;

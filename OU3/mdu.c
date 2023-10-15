@@ -19,13 +19,14 @@ typedef struct threadItems{
 	int exit_id;
 }threadItems;
 
+void start(threadItems *items, char *str);
 void items_init(threadItems *items);
 void start_threads(pthread_t *thread_ids, threadItems *items);
 char *allocate_for_string(char *str);
 bool securely_check_stack_empty(stack *s);
 void get_options(int argc, char *argv[], threadItems *items);
 void *run(void *temp);
-void open_dir(char *str, threadItems *items);
+int open_dir(char *str, threadItems *items);
 int get_size_of_file(char *path, threadItems *items);
 char *get_new_path(char *path, char *filename, int type);
 void check_str_ending(char *str);
@@ -33,6 +34,7 @@ void append_str(char *dest, char *src);
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sizelock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t working_threads_lock = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
@@ -53,20 +55,9 @@ int main(int argc, char *argv[]){
 
 	for (; optind < argc; optind++)
 	{
-		
-		char *new_path = allocate_for_string(argv[optind]);
-		items->directories = stack_push(items->directories, new_path);
-		pthread_t *thread_ids = calloc(items->number_of_threads, sizeof(pthread_t));
-	
-		start_threads(thread_ids, items);
-		run(items);
+		start(items, argv[optind]);
 
-		free(thread_ids);
-
-		printf("%d\t%s\n", items->total_size_of_files, argv[optind]);
-
-		items->total_size_of_files = 0;
-		
+		// If on the last argument, clean up and exit.
 		if(optind == (argc - 1)){
 			int e = items->exit_id;
 			stack_kill(s);
@@ -75,17 +66,7 @@ int main(int argc, char *argv[]){
 		}
 	}
 
-	char *new_path = allocate_for_string(default_folder);
-	items->directories = stack_push(items->directories, new_path);
-
-	pthread_t *thread_ids = calloc(items->number_of_threads + 1, sizeof(pthread_t));
-	
-	start_threads(thread_ids, items);
-	run(items);
-
-	free(thread_ids);
-
-	printf("%d\t%s\n", items->total_size_of_files, default_folder);
+	start(items, default_folder);
 	
 	int e = items->exit_id;
 
@@ -96,8 +77,28 @@ int main(int argc, char *argv[]){
 }
 
 /**
+ * start() - Creates necessary allocations and runs the program.
+ * @items: A struct of type threadItems.
+ * @str: The path to the file or directory.
+*/
+void start(threadItems *items, char *str){
+	char *new_path = allocate_for_string(str);
+	items->directories = stack_push(items->directories, new_path);
+	pthread_t *thread_ids = calloc(items->number_of_threads, sizeof(pthread_t));
+
+	start_threads(thread_ids, items);
+	run(items);
+
+	free(thread_ids);
+
+	printf("%d\t%s\n", items->total_size_of_files, str);
+
+	items->total_size_of_files = 0;
+}
+
+/**
  * items_init() - Initializer for the struct of type threadItems.
- * @items: the 
+ * @items: A struct of type threadItems. 
 */
 void items_init(threadItems *items){
 	items->total_size_of_files = 0;
@@ -109,7 +110,7 @@ void items_init(threadItems *items){
 }
 
 /**
- * start_threads() - 
+ * start_threads() - Creates the requested number of threads.
  * @thread_ids: Array of pthread_t positions.
  * @items: A struct of type threadItems.
 */
@@ -183,30 +184,49 @@ void get_options(int argc, char *argv[], threadItems *items){
 */
 void *run(void *temp){
 	struct threadItems *items = (threadItems*)temp;
+	int local_size = 0;
 	while(1){
+		
 		pthread_mutex_lock(&lock);
 		while(stack_empty(items->directories)){
+			pthread_mutex_lock(&working_threads_lock);
 			if(!items->first_thread && items->number_of_working_threads == 0){
+				pthread_mutex_unlock(&working_threads_lock);
 				items->last_thread_completed = 1;
 				pthread_cond_broadcast(&cond);
 				pthread_mutex_unlock(&lock);
+				pthread_mutex_lock(&sizelock);
+				items->total_size_of_files += local_size;
+				pthread_mutex_unlock(&sizelock);
 				return NULL;
 			}else if(items->last_thread_completed){
+				pthread_mutex_unlock(&working_threads_lock);
 				pthread_mutex_unlock(&lock);
+				pthread_mutex_lock(&sizelock);
+				items->total_size_of_files += local_size;
+				pthread_mutex_unlock(&sizelock);
 				return NULL;
 			}else{
+				pthread_mutex_unlock(&working_threads_lock);
+				//fprintf(stderr, "WAITING\n");
 				pthread_cond_wait(&cond, &lock);
+				//fprintf(stderr, "---------WOKE UP\n");
 			}
 		}
-		items->first_thread = false;
-		items->number_of_working_threads++;
 		char *str = stack_top(items->directories);
 		items->directories = stack_pop(items->directories);
 		pthread_mutex_unlock(&lock);
-		open_dir(str, items);
-		pthread_mutex_lock(&lock);
+
+		pthread_mutex_lock(&working_threads_lock);
+		items->first_thread = false;
+		items->number_of_working_threads++;
+		pthread_mutex_unlock(&working_threads_lock);
+
+		local_size += open_dir(str, items);
+
+		pthread_mutex_lock(&working_threads_lock);
 		items->number_of_working_threads--;
-		pthread_mutex_unlock(&lock);
+		pthread_mutex_unlock(&working_threads_lock);
 	}
 }
 
@@ -216,36 +236,40 @@ void *run(void *temp){
  * @items: A struct of type threadItems.
  * @return: A DIR pointer.
 */
-void open_dir(char *str, threadItems *items){
+int open_dir(char *str, threadItems *items){
 	DIR *dir = opendir(str);
+	int size = 0;
 	if(dir != NULL){
 		struct dirent *pDirent;
-		pthread_mutex_lock(&sizelock);
-		items->total_size_of_files += get_size_of_file(str, items);
-		pthread_mutex_unlock(&sizelock);
+		//pthread_mutex_lock(&sizelock);
+		size += get_size_of_file(str, items);
+		//pthread_mutex_unlock(&sizelock);
 		for(int i = 0; (pDirent = readdir(dir)) != NULL; i++){
 			if((strncmp(pDirent->d_name, ".", 2) == 0) || (strncmp(pDirent->d_name, "..", 3) == 0)){
 				continue;
 			}
 			char *new_path = get_new_path(str, pDirent->d_name, pDirent->d_type);
-			if(pDirent->d_type == 4){
+			if(pDirent->d_type == 4){ // IF DIR
 				pthread_mutex_lock(&lock);
 				items->directories = stack_push(items->directories, new_path);
 				pthread_mutex_unlock(&lock);
-			}else{
-				pthread_mutex_lock(&sizelock);
-				items->total_size_of_files += get_size_of_file(new_path, items);
-				pthread_mutex_unlock(&sizelock);
+				pthread_cond_broadcast(&cond);
+			}else{// If File
+				//pthread_mutex_lock(&sizelock);
+				size += get_size_of_file(new_path, items);
+				//pthread_mutex_unlock(&sizelock);
 				free(new_path);
 			}
 		}
 		closedir(dir);
 	}else{
-		pthread_mutex_lock(&sizelock);
-		items->total_size_of_files += get_size_of_file(str, items);
-		pthread_mutex_unlock(&sizelock);		
+		//pthread_mutex_lock(&sizelock);
+		size += get_size_of_file(str, items);
+		//pthread_mutex_unlock(&sizelock);		
 	}
+	// Free dir
 	free(str);
+	return size;
 }
 
 
@@ -268,6 +292,7 @@ int get_size_of_file(char *path, threadItems *items){
 		
 	}*/
 
+	//fprintf(stdout, "%s\n", path);
 	struct stat info;
 	if(lstat(path, &info)){
 		perror(path);
@@ -275,14 +300,54 @@ int get_size_of_file(char *path, threadItems *items){
 		return 0;
 	}
 
-	if(!(info.st_mode % S_IRUSR)){
+
+	if(!(info.st_mode & S_IRUSR) ){
 		fprintf(stderr, "%s: Permission Denied\n", path);
 		items->exit_id = 1;
+		int size = info.st_blocks;
+		return size;
 	}
+	/*int exists = access(path, F_OK);
+	if(exists == 0){
+		if(!(info.st_mode % S_IRGRP)){
+			if(!(info.st_mode % S_IRUSR)){
+				
+			}else{
+				fprintf(stderr, "%s: Permission Denied\n", path);
+				items->exit_id = 1;
+			}
+			
+		}
+	}
+	*/
+	/*
+	int exists = access(path, F_OK);
+	if(exists == 0){
+		
+		
 
-	int size = info.st_blocks;
+		
 
-	return size;
+	}*/
+	
+	
+	return info.st_blocks;
+
+	
+	/**
+	 * This makes nr.12 work but not the others
+	 if(!(info.st_mode % S_IRGRP)){
+		if(!(info.st_mode % S_IRUSR)){
+			
+		}else{
+			fprintf(stderr, "%s: Permission Denied\n", path);
+			items->exit_id = 1;
+		}
+		
+	}
+	*/
+
+	
 }
 
 /**
