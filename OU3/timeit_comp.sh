@@ -4,7 +4,7 @@ for i in {1..30}; do
 	# Start the timer
 	start_time=$(date +%s.%5N)
 
-	./mdu /usr/lib -j $i
+	./mdu_competition /usr/lib -j $i
 
 	# End the timer
 	end_time=$(date +%s.%5N)
