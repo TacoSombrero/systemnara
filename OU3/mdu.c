@@ -8,8 +8,10 @@
 #include <pthread.h>
 #include "stack.h"
 #include <sys/time.h>
+#include <errno.h>
 
-typedef struct threadItems{
+typedef struct threadItems
+{
 	stack *directories;
 	int total_size_of_files;
 	int number_of_threads;
@@ -17,7 +19,7 @@ typedef struct threadItems{
 	int number_of_working_threads;
 	bool first_thread;
 	int exit_id;
-}threadItems;
+} threadItems;
 
 void start(threadItems *items, char *str);
 void items_init(threadItems *items);
@@ -27,7 +29,7 @@ bool securely_check_stack_empty(stack *s);
 void get_options(int argc, char *argv[], threadItems *items);
 void *run(void *temp);
 int open_dir(char *str, threadItems *items);
-int get_size_of_file(char *path, threadItems *items);
+int get_size_of_file(char *path);
 char *get_new_path(char *path, char *filename, int type);
 void check_str_ending(char *str);
 void append_str(char *dest, char *src);
@@ -35,15 +37,17 @@ void append_str(char *dest, char *src);
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sizelock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t working_threads_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t exit_id_lock = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
 
 	char *default_folder = "./";
 	struct threadItems *items = malloc(sizeof(struct threadItems));
-	if(items == NULL){
+	if (items == NULL)
+	{
 		fprintf(stderr, "Failed to allocate space for items\n");
 		exit(EXIT_FAILURE);
 	}
@@ -58,7 +62,8 @@ int main(int argc, char *argv[]){
 		start(items, argv[optind]);
 
 		// If on the last argument, clean up and exit.
-		if(optind == (argc - 1)){
+		if (optind == (argc - 1))
+		{
 			int e = items->exit_id;
 			stack_kill(s);
 			free(items);
@@ -67,7 +72,7 @@ int main(int argc, char *argv[]){
 	}
 
 	start(items, default_folder);
-	
+
 	int e = items->exit_id;
 
 	stack_kill(s);
@@ -80,8 +85,9 @@ int main(int argc, char *argv[]){
  * start() - Creates necessary allocations and runs the program.
  * @items: A struct of type threadItems.
  * @str: The path to the file or directory.
-*/
-void start(threadItems *items, char *str){
+ */
+void start(threadItems *items, char *str)
+{
 	char *new_path = allocate_for_string(str);
 	items->directories = stack_push(items->directories, new_path);
 	pthread_t *thread_ids = calloc(items->number_of_threads, sizeof(pthread_t));
@@ -98,9 +104,10 @@ void start(threadItems *items, char *str){
 
 /**
  * items_init() - Initializer for the struct of type threadItems.
- * @items: A struct of type threadItems. 
-*/
-void items_init(threadItems *items){
+ * @items: A struct of type threadItems.
+ */
+void items_init(threadItems *items)
+{
 	items->total_size_of_files = 0;
 	items->number_of_threads = 0;
 	items->exit_id = 0;
@@ -113,13 +120,16 @@ void items_init(threadItems *items){
  * start_threads() - Creates the requested number of threads.
  * @thread_ids: Array of pthread_t positions.
  * @items: A struct of type threadItems.
-*/
-void start_threads(pthread_t *thread_ids, threadItems *items){
-	for (int i = 0; i < (items->number_of_threads - 1); i++){
-		pthread_create(&thread_ids[i], NULL, run, (void*)items);			
+ */
+void start_threads(pthread_t *thread_ids, threadItems *items)
+{
+	for (int i = 0; i < (items->number_of_threads - 1); i++)
+	{
+		pthread_create(&thread_ids[i], NULL, run, (void *)items);
 	}
-	
-	for(int i = 0; i < (items->number_of_threads - 1); i++){
+
+	for (int i = 0; i < (items->number_of_threads - 1); i++)
+	{
 		pthread_join(thread_ids[i], NULL);
 	}
 }
@@ -128,11 +138,13 @@ void start_threads(pthread_t *thread_ids, threadItems *items){
  * allocate_for_string)() - Allocates memory for a string.
  * @str: The string to allocate memory for.
  * @return: A char pointer to the newly allocated string.
-*/
-char *allocate_for_string(char *str){
+ */
+char *allocate_for_string(char *str)
+{
 	size_t string_size = strlen(str) + 1;
 	char *temp = (char *)malloc(string_size);
-	if(temp == NULL){
+	if (temp == NULL)
+	{
 		fprintf(stderr, "allocate_for_string: Malloc failed\n");
 		exit(EXIT_FAILURE);
 	}
@@ -144,8 +156,9 @@ char *allocate_for_string(char *str){
  * securely_check_stack_empty() - Securely checks if the stack is empty using a mutex lock.
  * @s: The name of the stack to check.
  * @return: True if stack is empty, false if not.
-*/
-bool securely_check_stack_empty(stack *s){
+ */
+bool securely_check_stack_empty(stack *s)
+{
 	pthread_mutex_lock(&lock);
 	bool b = stack_empty(s);
 	pthread_mutex_unlock(&lock);
@@ -154,16 +167,18 @@ bool securely_check_stack_empty(stack *s){
 
 /**
  * get_options() - Retrives all the flags sent to the program.
- * 
+ *
  * @argc: Number of commandline arguments.
  * @argv: The commandline arguments.
  * @items: A struct of type threadItems.
  * @return: A string for the name of the makefile that shall be used.
-*/
-void get_options(int argc, char *argv[], threadItems *items){
+ */
+void get_options(int argc, char *argv[], threadItems *items)
+{
 	int opt;
-	
-	while ((opt = getopt(argc, argv, "j:")) != -1){
+
+	while ((opt = getopt(argc, argv, "j:")) != -1)
+	{
 		switch (opt)
 		{
 		case 'j':
@@ -181,16 +196,19 @@ void get_options(int argc, char *argv[], threadItems *items){
  * If another directory is found within the first one it to gets put into the stack
  * @temp: A struct of type threadItems.
  * @return: A NULL pointer.
-*/
-void *run(void *temp){
-	struct threadItems *items = (threadItems*)temp;
+ */
+void *run(void *temp)
+{
+	struct threadItems *items = (threadItems *)temp;
 	int local_size = 0;
-	while(1){
-		
+	while (1)
+	{
 		pthread_mutex_lock(&lock);
-		while(stack_empty(items->directories)){
+		while (stack_empty(items->directories))
+		{
 			pthread_mutex_lock(&working_threads_lock);
-			if(!items->first_thread && items->number_of_working_threads == 0){
+			if (!items->first_thread && items->number_of_working_threads == 0)
+			{
 				pthread_mutex_unlock(&working_threads_lock);
 				items->last_thread_completed = 1;
 				pthread_cond_broadcast(&cond);
@@ -199,18 +217,20 @@ void *run(void *temp){
 				items->total_size_of_files += local_size;
 				pthread_mutex_unlock(&sizelock);
 				return NULL;
-			}else if(items->last_thread_completed){
+			}
+			else if (items->last_thread_completed)
+			{
 				pthread_mutex_unlock(&working_threads_lock);
 				pthread_mutex_unlock(&lock);
 				pthread_mutex_lock(&sizelock);
 				items->total_size_of_files += local_size;
 				pthread_mutex_unlock(&sizelock);
 				return NULL;
-			}else{
+			}
+			else
+			{
 				pthread_mutex_unlock(&working_threads_lock);
-				//fprintf(stderr, "WAITING\n");
 				pthread_cond_wait(&cond, &lock);
-				//fprintf(stderr, "---------WOKE UP\n");
 			}
 		}
 		char *str = stack_top(items->directories);
@@ -235,119 +255,72 @@ void *run(void *temp){
  * @str: Directory to open.
  * @items: A struct of type threadItems.
  * @return: A DIR pointer.
-*/
-int open_dir(char *str, threadItems *items){
+ */
+int open_dir(char *str, threadItems *items)
+{
 	DIR *dir = opendir(str);
 	int size = 0;
-	if(dir != NULL){
+	if (dir != NULL)
+	{
 		struct dirent *pDirent;
-		//pthread_mutex_lock(&sizelock);
-		size += get_size_of_file(str, items);
-		//pthread_mutex_unlock(&sizelock);
-		for(int i = 0; (pDirent = readdir(dir)) != NULL; i++){
-			if((strncmp(pDirent->d_name, ".", 2) == 0) || (strncmp(pDirent->d_name, "..", 3) == 0)){
+		size += get_size_of_file(str);
+		for (int i = 0; (pDirent = readdir(dir)) != NULL; i++)
+		{
+			if ((strncmp(pDirent->d_name, ".", 2) == 0) || (strncmp(pDirent->d_name, "..", 3) == 0))
+			{
 				continue;
 			}
 			char *new_path = get_new_path(str, pDirent->d_name, pDirent->d_type);
-			if(pDirent->d_type == 4){ // IF DIR
+			if (pDirent->d_type == 4)
+			{
 				pthread_mutex_lock(&lock);
 				items->directories = stack_push(items->directories, new_path);
-				pthread_mutex_unlock(&lock);
 				pthread_cond_broadcast(&cond);
-			}else{// If File
-				//pthread_mutex_lock(&sizelock);
-				size += get_size_of_file(new_path, items);
-				//pthread_mutex_unlock(&sizelock);
+				pthread_mutex_unlock(&lock);
+			}
+			else
+			{
+				size += get_size_of_file(new_path);
 				free(new_path);
 			}
 		}
 		closedir(dir);
-	}else{
-		//pthread_mutex_lock(&sizelock);
-		size += get_size_of_file(str, items);
-		//pthread_mutex_unlock(&sizelock);		
 	}
-	// Free dir
+	else
+	{
+		FILE *fp = fopen(str, "r");
+		if(fp == NULL){
+			size += get_size_of_file(str);
+			fprintf(stderr, "%s, Permission, denied\n", str);
+			pthread_mutex_lock(&exit_id_lock);
+			items->exit_id = 1;
+			pthread_mutex_unlock(&exit_id_lock);
+		}else{
+			fclose(fp);
+			size += get_size_of_file(str);
+		}
+	}
 	free(str);
 	return size;
 }
-
 
 /**
  * get_size_of_file() - Uses lstat to get the size of a file.
  * @path: The path to the file.
  * @items: A struct of type threadItems.
  * @return: The size of the file.
-*/
-int get_size_of_file(char *path, threadItems *items){
+ */
+int get_size_of_file(char *path)
+{
 
-	
-	/*int read = access(path, R_OK);
-	if(read != 0){
-		fprintf(stderr, "NAME: %s\n", path);
-		perror(path);
-		items->exit_id = 1;
-
-	}else{
-		
-	}*/
-
-	//fprintf(stdout, "%s\n", path);
 	struct stat info;
-	if(lstat(path, &info)){
+	if (lstat(path, &info) < 0)
+	{
 		perror(path);
-		fprintf(stderr, "%s does not exist\n", path);
-		return 0;
+		exit(EXIT_FAILURE);
 	}
 
-
-	if(!(info.st_mode & S_IRUSR) ){
-		fprintf(stderr, "%s: Permission Denied\n", path);
-		items->exit_id = 1;
-		int size = info.st_blocks;
-		return size;
-	}
-	/*int exists = access(path, F_OK);
-	if(exists == 0){
-		if(!(info.st_mode % S_IRGRP)){
-			if(!(info.st_mode % S_IRUSR)){
-				
-			}else{
-				fprintf(stderr, "%s: Permission Denied\n", path);
-				items->exit_id = 1;
-			}
-			
-		}
-	}
-	*/
-	/*
-	int exists = access(path, F_OK);
-	if(exists == 0){
-		
-		
-
-		
-
-	}*/
-	
-	
 	return info.st_blocks;
-
-	
-	/**
-	 * This makes nr.12 work but not the others
-	 if(!(info.st_mode % S_IRGRP)){
-		if(!(info.st_mode % S_IRUSR)){
-			
-		}else{
-			fprintf(stderr, "%s: Permission Denied\n", path);
-			items->exit_id = 1;
-		}
-		
-	}
-	*/
-
-	
 }
 
 /**
@@ -356,23 +329,26 @@ int get_size_of_file(char *path, threadItems *items){
  * @filename: The name of the directory or file.
  * @type: If type is equal to 4 a / will be appended to the end of the path. Otherwise not.
  * @return: The new path.
-*/
-char *get_new_path(char *path, char *filename, int type){
+ */
+char *get_new_path(char *path, char *filename, int type)
+{
 	int x = 3;
-	
+
 	size_t string_size = strlen(path) + strlen(filename) + x;
 	char *temp = (char *)malloc(string_size);
-	if(temp == NULL){
+	if (temp == NULL)
+	{
 		fprintf(stderr, "get_new_path: Malloc failed\n");
 		exit(EXIT_FAILURE);
 	}
 	temp = strcpy(temp, path);
-	// Check if last char of str is / 
+	// Check if last char of str is /
 	check_str_ending(temp);
 	// Append
 	append_str(temp, filename);
 
-	if(type == 4){
+	if (type == 4)
+	{
 		append_str(temp, "/");
 	}
 	return temp;
@@ -381,10 +357,12 @@ char *get_new_path(char *path, char *filename, int type){
 /**
  * check_str_ending() - Checks if the string is ending with a /.
  * @str: The string to check.
-*/
-void check_str_ending(char *str){
+ */
+void check_str_ending(char *str)
+{
 	int len = strlen(str);
-	if(str[len - 1] != '/'){
+	if (str[len - 1] != '/')
+	{
 		str = strcat(str, "/");
 	}
 }
@@ -393,8 +371,8 @@ void check_str_ending(char *str){
  * append_str() - appands a string with another string
  * @dest: The string to append.
  * @src: The string to append with.
-*/
-void append_str(char *dest, char *src){
+ */
+void append_str(char *dest, char *src)
+{
 	dest = strcat(dest, src);
 }
-

@@ -15,6 +15,7 @@ int main (){
 		return 1;
 	}
 	pthread_t tid[10];
+
 	for(int i = 0; i < 10; i++){
 		pthread_create(&tid[i], NULL, thread_func, (void*)&tid);
 	}
