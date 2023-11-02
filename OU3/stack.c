@@ -14,7 +14,7 @@ struct stack{
 
 /**
  * stack_create() - Creates a new empty stack.
- * @return: The new stack.
+ * @param return The new stack.
 */
 stack *stack_create(void){
 	stack *s = calloc(1, sizeof(stack));
@@ -28,8 +28,8 @@ stack *stack_create(void){
 
 /**
  * stack_empty() - Checks if the stack is empty or not.
- * @s: The stack.
- * @return: True if stack is empty, otherwise false.
+ * @param s The stack.
+ * @param return True if stack is empty, otherwise false.
 */
 bool stack_empty(stack *s){
 	return s->top == NULL;
@@ -37,8 +37,8 @@ bool stack_empty(stack *s){
 
 /**
  * stack_push() - Adding a new string to the stack.
- * @s: The stack we are adding str to.
- * @return: The new stack.
+ * @param s The stack we are adding str to.
+ * @param return The new stack.
 */
 stack *stack_push(stack *s, char *str){
 	struct cell *c = calloc(1, sizeof(struct cell));
@@ -57,8 +57,8 @@ stack *stack_push(stack *s, char *str){
 
 /**
  * stack_pop() - Removes the top cell of the stack.
- * @s: The stack to remove the top of.
- * @return: The new stack.
+ * @param s The stack to remove the top of.
+ * @param return The new stack.
 */
 stack *stack_pop(stack *s){
 	if(stack_empty(s)){
@@ -73,8 +73,8 @@ stack *stack_pop(stack *s){
 
 /**
  * stack_top() - Returns the top of the stack.
- * @s: The stack to look at.
- * @return: The string at the top of the stack.
+ * @param s The stack to look at.
+ * @param return The string at the top of the stack.
 */
 char *stack_top(stack *s){
 	if(stack_empty(s)){
@@ -85,7 +85,7 @@ char *stack_top(stack *s){
 
 /**
  * stack_kill() - Deallocates all used memory by the stack.
- * @s: The stack to kill.
+ * @param s The stack to kill.
 */
 void stack_kill(stack *s){
 	while(!stack_empty(s)){
